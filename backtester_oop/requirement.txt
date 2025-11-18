@@ -1,0 +1,6 @@
+pandas
+numpy
+matplotlib
+python-dateutil
+# MetaTrader5 hanya jika mau fetch dari MT5:
+MetaTrader5; platform_system == "Windows"
