@@ -48,7 +48,14 @@ def compute_risk_adjusted_metrics(equity_series: pd.Series,
     end_val = equity_series.iloc[-1]
     num_years = len(equity_series) / 252
 
-    cagr = (end_val / start_val) ** (1 / num_years) - 1 if start_val > 0 else np.nan
+    # --- CAGR ---
+    if start_val <= 0 or end_val <= 0 or num_years <= 0:
+        cagr = np.nan
+    else:
+        try:
+            cagr = (end_val / start_val) ** (1 / num_years) - 1
+        except:
+            cagr = np.nan
 
     # MAR ratio
     mar_ratio = cagr / mar_return if mar_return > 0 else np.nan

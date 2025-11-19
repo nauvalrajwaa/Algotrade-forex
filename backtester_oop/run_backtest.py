@@ -13,7 +13,7 @@ from backtester.strategies.ma_atr import MA_ATR_Strategy
 from backtester.strategies.rsi_ma_reversal import RSI_MA_Reversal
 from backtester.strategies.bollinger_squeeze import BollingerSqueeze
 
-from backtester.engine.backtest import BacktestEngine
+from backtester.engine.backtest_engine import BacktestEngine
 
 from backtester.optimizer.metrics import metrics_from_trades, ascii_box_table
 from backtester.optimizer.ga import GeneticOptimizer

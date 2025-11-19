@@ -50,7 +50,7 @@ SEARCH_SPACE = {
 # -----------------------------
 GA_CONFIG = {
     "population_size": 20,
-    "generations": 5,
+    "generations": 3,
     "mutation_rate": 0.12,
     "crossover_rate": 0.7,
     "elitism": 2,
@@ -61,7 +61,7 @@ GA_CONFIG = {
 # Monte Carlo (Simulated Annealing)
 # -----------------------------
 MC_CONFIG = {
-    "iterations": 300,
+    "iterations": 100,
     "temperature": 1.0,
     "cooling_rate": 0.999,
 }
