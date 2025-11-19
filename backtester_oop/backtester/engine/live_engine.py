@@ -1,11 +1,14 @@
-# backtester/engine/live_engine.py
+import os
 import time
 import logging
 import datetime as dt
 import numpy as np
 import MetaTrader5 as mt5
 import pandas as pd
+import csv
 
+# load config
+import config
 
 class LiveEngine:
     def __init__(
@@ -17,7 +20,7 @@ class LiveEngine:
         bars=200,
         mode="paper",
         risk_per_trade=0.01,
-        log_file="logs/live_default.log",
+        log_file=None,
         max_daily_loss=0.05,
         max_drawdown=0.20
     ):
@@ -31,11 +34,29 @@ class LiveEngine:
         self.max_daily_loss = max_daily_loss
         self.max_drawdown = max_drawdown
 
-        # Setup logger
-        logging.basicConfig(filename=log_file,
+        # use config paths if not passed
+        self.log_file = log_file or config.LOG_FILE
+        self.trade_csv = config.TRADE_CSV
+
+        # Ensure logs directory exists
+        log_dir = os.path.dirname(self.log_file) or "."
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+
+        # Setup logger (basic)
+        logging.basicConfig(filename=self.log_file,
                             level=logging.INFO,
                             format='%(asctime)s [LIVE] %(message)s')
         logging.info("===== LiveEngine initialized =====")
+
+        # Ensure trade csv exists with header
+        if not os.path.exists(self.trade_csv):
+            with open(self.trade_csv, "w", newline='', encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "timestamp", "symbol", "direction", "entry",
+                    "sl", "tp", "volume", "status", "retcode", "comment"
+                ])
 
         self.connected = False
         self.balance_start = None
@@ -87,21 +108,61 @@ class LiveEngine:
 
 
     # =====================================================
+    # HELPER: pip size
+    # =====================================================
+    def _pip_size(self, info):
+        # Typical pip = 10 * point. This works for normal FX and JPY pairs.
+        return info.point * 10
+
+
+    # =====================================================
+    # LOG TRADE ROW (CSV) & pretty table line to logger
+    # =====================================================
+    def _log_trade_row(self, timestamp, symbol, direction, entry, sl, tp, volume, status, retcode, comment):
+        # append to csv
+        with open(self.trade_csv, "a", newline='', encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([timestamp, symbol, direction, entry, sl, tp, volume, status, retcode, comment])
+
+        # formatted table-like line in main log
+        dir_str = "BUY" if direction == 1 else "SELL"
+        logging.info(f"TRADE | {timestamp} | {symbol} | {dir_str} | entry={entry:.5f} sl={sl:.5f} tp={tp:.5f} vol={volume} status={status} ret={retcode} comment={comment}")
+
+
+    # =====================================================
     # ORDER EXECUTION
     # =====================================================
     def send_order(self, direction, sl, tp, volume):
+        timestamp = dt.datetime.utcnow().isoformat()
         if self.mode == "paper":
+            # log paper trade as "PAPER"
+            self._log_trade_row(timestamp, self.symbol, direction, None, sl, tp, volume, "PAPER", None, "Paper trade simulated")
             logging.info(f"[PAPER] ORDER {direction} | vol={volume} sl={sl} tp={tp}")
             return True
 
-        # LIVE MODE
+        # LIVE MODE: check max open trades before sending
+        open_positions = mt5.positions_get(symbol=self.symbol) or []
+        if len(open_positions) >= config.MAX_OPEN_TRADES:
+            msg = f"Max open trades reached ({len(open_positions)}) >= {config.MAX_OPEN_TRADES}. Skipping order."
+            logging.info(msg)
+            self._log_trade_row(timestamp, self.symbol, direction, None, sl, tp, volume, "SKIPPED_MAX_TRADES", None, msg)
+            return False
+
         type_map = {1: mt5.ORDER_TYPE_BUY, -1: mt5.ORDER_TYPE_SELL}
+        tick = mt5.symbol_info_tick(self.symbol)
+        if tick is None:
+            logging.error("symbol_info_tick returned None")
+            self._log_trade_row(timestamp, self.symbol, direction, None, sl, tp, volume, "FAILED", None, "No tick")
+            return False
+
+        price = tick.ask if direction == 1 else tick.bid
+
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": self.symbol,
             "type": type_map[direction],
             "volume": volume,
-            "price": mt5.symbol_info_tick(self.symbol).ask if direction == 1 else mt5.symbol_info_tick(self.symbol).bid,
+            "price": price,
             "sl": sl,
             "tp": tp,
             "deviation": 20,
@@ -110,9 +171,16 @@ class LiveEngine:
             "type_filling": mt5.ORDER_FILLING_FOK
         }
         result = mt5.order_send(request)
-        logging.info(f"Order send result: {result}")
 
-        return result.retcode == mt5.TRADE_RETCODE_DONE
+        # log result
+        retcode = getattr(result, "retcode", None)
+        comment = getattr(result, "comment", "")
+        status = "OK" if retcode == mt5.TRADE_RETCODE_DONE else "REJECTED"
+        entry = price if retcode == mt5.TRADE_RETCODE_DONE else None
+
+        self._log_trade_row(timestamp, self.symbol, direction, entry, sl, tp, volume, status, retcode, comment)
+        logging.info(f"Order send result: {result}")
+        return retcode == mt5.TRADE_RETCODE_DONE
 
 
     # =====================================================
@@ -135,14 +203,11 @@ class LiveEngine:
 
                 # Take latest signal
                 sig = int(df_sig["signal"].iloc[-1])
-                atr_val = float(df_sig["atr"].iloc[-1])
                 price = float(df_sig["close"].iloc[-1])
 
                 # If there is open position, handle SL/TP/trailing here (not implemented fully)
-                # --------------------------------------------
                 if self.current_position:
-                    self.update_position(price, atr_val)
-                # --------------------------------------------
+                    self.update_position(price, None)
 
                 # No new signal
                 if sig == 0:
@@ -153,15 +218,61 @@ class LiveEngine:
                 # Must flip or open new position
                 direction = sig
 
-                # Compute SL/TP basic ATR rule
-                sl = price - self.strategy.params.get("atr_mul", 1.5) * atr_val if direction == 1 else \
-                     price + self.strategy.params.get("atr_mul", 1.5) * atr_val
+                # ------------------------
+                # SL/TP: use config ratio + base pips (1 = 30 pip)
+                # ------------------------
+                info = mt5.symbol_info(self.symbol)
+                if info is None:
+                    logging.error("symbol_info() is None; skipping")
+                    time.sleep(poll_interval)
+                    continue
 
-                tp = price + self.strategy.params.get("atr_mul", 1.5) * atr_val if direction == 1 else \
-                     price - self.strategy.params.get("atr_mul", 1.5) * atr_val
+                pip = self._pip_size(info)
+                base_pips = config.BASE_PIPS  # expected 30
+                sl_distance = base_pips * pip  # e.g., 30 * pip_size
+                # parse ratio "1:2" -> tp_multiplier = 2
+                parts = config.SLTP_RATIO.split(":")
+                try:
+                    tp_multiplier = float(parts[1]) / float(parts[0])
+                except Exception:
+                    tp_multiplier = 1.0
 
-                # Volume sizing (simple)
-                vol = self.compute_lot_sizing(price, atr_val)
+                tp_distance = sl_distance * tp_multiplier
+
+                if direction == 1:
+                    sl = price - sl_distance
+                    tp = price + tp_distance
+                else:
+                    sl = price + sl_distance
+                    tp = price - tp_distance
+
+                # ------------------------
+                # Volume sizing: use FIXED_LOT if configured, otherwise compute
+                # ------------------------
+                if config.FIXED_LOT is not None:
+                    vol = float(config.FIXED_LOT)
+                    logging.info(f"Using FIXED_LOT from config: {vol}")
+                else:
+                    # fallback to previous/dynamic sizing (keeps compute_lot_sizing)
+                    vol = self.compute_lot_sizing(price, None)
+
+                # sanity: cap to config.MAX_LOT_CAP and ensure >= min volume
+                info = mt5.symbol_info(self.symbol)
+                step = getattr(info, "volume_step", 0.01)
+                min_lot = getattr(info, "volume_min", 0.01)
+                max_lot = getattr(info, "volume_max", config.MAX_LOT_CAP)
+                # round to step
+                try:
+                    vol = max(min_lot, min(max_lot, round(vol / step) * step))
+                except Exception:
+                    vol = max(min_lot, min(max_lot, float(vol)))
+
+                logging.info(f"Computed/used lot: {vol} | SL pips={base_pips} TP mult={tp_multiplier}")
+
+                if vol is None or vol <= 0:
+                    logging.warning("Computed lot is zero or invalid — skipping order")
+                    time.sleep(poll_interval)
+                    continue
 
                 ok = self.send_order(direction, sl, tp, vol)
                 if ok:
@@ -182,26 +293,51 @@ class LiveEngine:
 
 
     # =====================================================
-    # DYNAMIC LOT SIZING
+    # DYNAMIC LOT SIZING (kept as fallback)
     # =====================================================
     def compute_lot_sizing(self, price, atr):
+        # simplified fallback: compute lot using risk_per_trade and an approximate pip-value
         info = mt5.symbol_info(self.symbol)
-        step = info.volume_step
-        min_lot = info.volume_min
+        if info is None:
+            logging.error("symbol_info() returned None")
+            return None
+
+        step = getattr(info, "volume_step", 0.01)
+        min_lot = getattr(info, "volume_min", 0.01)
+        contract_size = getattr(info, "trade_contract_size", 100000.0)
+        pip = self._pip_size(info)
 
         acc = mt5.account_info()
+        if acc is None:
+            logging.error("account_info() returned None")
+            return None
         balance = acc.balance
 
-        risk_value = balance * self.risk_per_trade
-        stop_distance = atr * self.strategy.params.get("atr_mul", 1.5)
+        risk_value = balance * float(self.risk_per_trade)
 
-        # lot = risk / (stop distance * tick value)
-        tick_value = info.trade_tick_value
-        lot = risk_value / (stop_distance * tick_value)
+        # if atr not provided, approximate stop distance using config.BASE_PIPS
+        stop_distance = config.BASE_PIPS * pip
 
-        # round to broker lot-step
-        lot = max(min_lot, round(lot / step) * step)
-        return lot
+        # approximate tick_value: contract_size * point -> per-lot per-tick
+        tick_value = getattr(info, "trade_tick_value", None)
+        if not tick_value:
+            tick_value = contract_size * info.point
+
+        number_of_ticks = stop_distance / info.point
+        loss_per_lot = number_of_ticks * tick_value
+
+        if loss_per_lot <= 0:
+            logging.error("Loss per lot non-positive")
+            return None
+
+        raw_lot = risk_value / loss_per_lot
+        try:
+            rounded_lot = max(min_lot, round(raw_lot / step) * step)
+        except Exception:
+            rounded_lot = max(min_lot, float(raw_lot))
+
+        logging.info(f"Fallback lot sizing: balance={balance}, risk_value={risk_value}, loss_per_lot={loss_per_lot}, raw_lot={raw_lot}, rounded_lot={rounded_lot}")
+        return rounded_lot
 
 
     # =====================================================
@@ -215,18 +351,18 @@ class LiveEngine:
 
         # Check SL hit
         if pos["direction"] == 1 and price <= pos["sl"]:
-            logging.info("SL hit — closing BUY")
+            logging.info("SL hit — closing BUY (internal state)")
             self.current_position = None
 
         if pos["direction"] == -1 and price >= pos["sl"]:
-            logging.info("SL hit — closing SELL")
+            logging.info("SL hit — closing SELL (internal state)")
             self.current_position = None
 
         # Check TP hit
         if pos["direction"] == 1 and price >= pos["tp"]:
-            logging.info("TP hit — closing BUY")
+            logging.info("TP hit — closing BUY (internal state)")
             self.current_position = None
 
         if pos["direction"] == -1 and price <= pos["tp"]:
-            logging.info("TP hit — closing SELL")
+            logging.info("TP hit — closing SELL (internal state)")
             self.current_position = None

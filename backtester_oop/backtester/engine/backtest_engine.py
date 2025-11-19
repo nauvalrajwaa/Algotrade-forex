@@ -2,18 +2,17 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
 from backtester.strategies.base import Strategy
-
+import config
 
 class BacktestEngine:
     def __init__(self,
                  strategy: Strategy,
-                 initial_balance: float = 10000.0,
-                 max_trades: int = 1,
+                 initial_balance: float = None,
                  pip_point: float = 0.0001):
         self.strategy = strategy
-        self.initial_balance = initial_balance
-        self.max_trades = max_trades
-        self.pip_point = pip_point     # typically 0.0001 for forex
+        self.initial_balance = initial_balance or config.INITIAL_BALANCE
+        self.pip_point = pip_point
+        self.max_trades = config.MAX_OPEN_TRADES
 
     # =====================================================
     # RUN BACKTEST
@@ -27,30 +26,36 @@ class BacktestEngine:
         trades = []
         open_trades = []
 
+        # Parse SL/TP ratio from config
+        parts = config.SLTP_RATIO.split(":")
+        try:
+            tp_multiplier = float(parts[1]) / float(parts[0])
+        except Exception:
+            tp_multiplier = 1.0
+
+        base_pips = config.BASE_PIPS
+        sl_distance_base = base_pips * self.pip_point
+
         # =================================================
         # MAIN LOOP OVER CANDLES
         # =================================================
         for idx, row in df.iterrows():
 
-            # -------------------------------------------------
+            # --------------------------
             # 1) Manage OPEN TRADES (SL/TP)
-            # -------------------------------------------------
+            # --------------------------
             remaining_trades = []
 
             for t in open_trades:
                 alive = True
 
                 if t["dir"] == "buy":
-
-                    # Stop Loss hit
                     if row["low"] <= t["sl"]:
                         pnl = (t["sl"] - t["entry"]) * t["size"] / self.pip_point
                         equity += pnl
                         t.update({"exit": t["sl"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
                         alive = False
-
-                    # Take Profit hit
                     elif row["high"] >= t["tp"]:
                         pnl = (t["tp"] - t["entry"]) * t["size"] / self.pip_point
                         equity += pnl
@@ -58,15 +63,13 @@ class BacktestEngine:
                         trades.append(t)
                         alive = False
 
-                else:  # SELL
-
+                else:  # sell
                     if row["high"] >= t["sl"]:
                         pnl = (t["entry"] - t["sl"]) * t["size"] / self.pip_point
                         equity += pnl
                         t.update({"exit": t["sl"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
                         alive = False
-
                     elif row["low"] <= t["tp"]:
                         pnl = (t["entry"] - t["tp"]) * t["size"] / self.pip_point
                         equity += pnl
@@ -79,34 +82,37 @@ class BacktestEngine:
 
             open_trades = remaining_trades
 
-            # -------------------------------------------------
+            # --------------------------
             # 2) Open NEW TRADES based on strategy signals
-            # -------------------------------------------------
+            # --------------------------
             if len(open_trades) < self.max_trades:
                 sig = int(row.get("signal", 0))
-
                 if sig != 0:
 
-                    # ATR for SL distance
-                    atr = row.get("atr", df["atr"].median() if "atr" in df.columns else 0.001)
-                    atr_mul = self.strategy.params.get("atr_mul", 1.5)
-                    sl_dist = atr * atr_mul
-
                     entry = row["close"]
-                    risk_amount = equity * self.strategy.params.get("risk_per_trade", 0.01)
 
-                    # ============= REALISTIC RISK-BASED POSITION SIZE =============
-                    # Risk = SL distance in price / pip; risk per pip = size
-                    pip_dist = sl_dist / self.pip_point
-                    size = max(0.01, risk_amount / pip_dist)
+                    # LOT SIZING
+                    if config.FIXED_LOT is not None:
+                        size = config.FIXED_LOT
+                    else:
+                        # fallback risk-based sizing: equity / SL distance
+                        risk_amount = equity * getattr(self.strategy.params, "risk_per_trade", 0.01)
+                        sl_dist = sl_distance_base
+                        pip_dist = sl_dist / self.pip_point
+                        size = max(config.MIN_LOT_FALLBACK, risk_amount / pip_dist)
+                        size = min(size, config.MAX_LOT_CAP)
+
+                    # SL/TP
+                    sl_dist = sl_distance_base
+                    tp_dist = sl_dist * tp_multiplier
 
                     if sig == 1:
                         sl = entry - sl_dist
-                        tp = entry + sl_dist * 2
+                        tp = entry + tp_dist
                         direction = "buy"
                     else:
                         sl = entry + sl_dist
-                        tp = entry - sl_dist * 2
+                        tp = entry - tp_dist
                         direction = "sell"
 
                     trade = {
@@ -135,7 +141,6 @@ class BacktestEngine:
                         pnl = (last_price - t["entry"]) * t["size"] / self.pip_point
                     else:
                         pnl = (t["entry"] - last_price) * t["size"] / self.pip_point
-
                     t.update({"exit": last_price, "exit_time": last_time, "pnl": pnl})
                     trades.append(t)
                     equity += pnl
