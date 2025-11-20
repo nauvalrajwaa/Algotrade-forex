@@ -1,0 +1,3 @@
+backtester_oop/backtester/data/*.csv
+backtester_oop/backtester/data/data_clean/*.csv
+
