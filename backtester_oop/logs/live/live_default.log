@@ -1,0 +1,11 @@
+2025-11-21 13:02:59,660 [LIVE] ===== LiveEngine initialized =====
+2025-11-21 13:02:59,660 [LIVE] Strategy used: M1ScalperStrategy
+2025-11-21 13:02:59,661 [LIVE] Strategy params: {'ma_fast': 3, 'ma_slow': 8, 'atr_period': 5, 'atr_mult': 0.3, 'mom_period': 2, 'mom_threshold': 0.0, 'cooldown': 1}
+2025-11-21 13:10:11,166 [LIVE] ===== LiveEngine initialized =====
+2025-11-21 13:10:11,166 [LIVE] Strategy used: M1ScalperStrategy
+2025-11-21 13:10:11,167 [LIVE] Strategy params: {'ma_fast': 3, 'ma_slow': 8, 'atr_period': 5, 'atr_mult': 0.3, 'mom_period': 2, 'mom_threshold': 0.0, 'cooldown': 1}
+2025-11-21 13:10:11,184 [LIVE] Connected to MT5
+2025-11-21 13:10:11,184 [LIVE] ===== LiveEngine started =====
+2025-11-21 13:10:11,196 [LIVE] Signal = 0, flat.
+2025-11-21 13:10:16,212 [LIVE] Signal = 0, flat.
+2025-11-21 13:10:17,261 [LIVE] Disconnected from MT5

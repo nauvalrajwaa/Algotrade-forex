@@ -17,9 +17,23 @@ class BacktestEngine:
         self.max_trades = config.MAX_OPEN_TRADES
 
     # =====================================================
+    # PIP SIZE PER SYMBOL
+    # =====================================================
+    def _pip_size(self, symbol: str):
+        symbol = symbol.upper()
+        if symbol == "XAUUSD":
+            return 0.10
+        if symbol in ("EURUSD", "GBPUSD"):
+            return 0.0001
+        if symbol == "GBPJPY":
+            return 0.01
+        # fallback generic
+        return self.pip_point
+
+    # =====================================================
     # RUN BACKTEST
     # =====================================================
-    def run(self, df: pd.DataFrame) -> (pd.Series, List[Dict[str, Any]]):
+    def run(self, df: pd.DataFrame, symbol: str = None) -> (pd.Series, List[Dict[str, Any]]):
         df = self.strategy.generate_signals(df)
 
         equity = self.initial_balance
@@ -36,7 +50,9 @@ class BacktestEngine:
             tp_multiplier = 1.0
 
         base_pips = config.BASE_PIPS
-        sl_distance_base = base_pips * self.pip_point
+        # gunakan pip spesifik per symbol jika diberikan
+        pip_size = self._pip_size(symbol) if symbol else self.pip_point
+        sl_distance_base = base_pips * pip_size
 
         # =================================================
         # MAIN LOOP OVER CANDLES
@@ -53,13 +69,13 @@ class BacktestEngine:
 
                 if t["dir"] == "buy":
                     if row["low"] <= t["sl"]:
-                        pnl = (t["sl"] - t["entry"]) * t["size"] / self.pip_point
+                        pnl = (t["sl"] - t["entry"]) * t["size"] / pip_size
                         equity += pnl
                         t.update({"exit": t["sl"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
                         alive = False
                     elif row["high"] >= t["tp"]:
-                        pnl = (t["tp"] - t["entry"]) * t["size"] / self.pip_point
+                        pnl = (t["tp"] - t["entry"]) * t["size"] / pip_size
                         equity += pnl
                         t.update({"exit": t["tp"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
@@ -67,13 +83,13 @@ class BacktestEngine:
 
                 else:  # sell
                     if row["high"] >= t["sl"]:
-                        pnl = (t["entry"] - t["sl"]) * t["size"] / self.pip_point
+                        pnl = (t["entry"] - t["sl"]) * t["size"] / pip_size
                         equity += pnl
                         t.update({"exit": t["sl"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
                         alive = False
                     elif row["low"] <= t["tp"]:
-                        pnl = (t["entry"] - t["tp"]) * t["size"] / self.pip_point
+                        pnl = (t["entry"] - t["tp"]) * t["size"] / pip_size
                         equity += pnl
                         t.update({"exit": t["tp"], "exit_time": idx, "pnl": pnl, "closed": True})
                         trades.append(t)
@@ -94,13 +110,13 @@ class BacktestEngine:
                     entry = row["close"]
 
                     # LOT SIZING
-                    if config.FIXED_LOT is not None:
-                        size = config.FIXED_LOT
+                    if config.FIXED_LOT_BACKTEST is not None:
+                        size = config.FIXED_LOT_BACKTEST
                     else:
                         # fallback risk-based sizing: equity / SL distance
                         risk_amount = equity * getattr(self.strategy.params, "risk_per_trade", 0.01)
                         sl_dist = sl_distance_base
-                        pip_dist = sl_dist / self.pip_point
+                        pip_dist = sl_dist / pip_size
                         size = max(config.MIN_LOT_FALLBACK, risk_amount / pip_dist)
                         size = min(size, config.MAX_LOT_CAP)
 
@@ -140,9 +156,9 @@ class BacktestEngine:
             for t in open_trades:
                 if not t["closed"]:
                     if t["dir"] == "buy":
-                        pnl = (last_price - t["entry"]) * t["size"] / self.pip_point
+                        pnl = (last_price - t["entry"]) * t["size"] / pip_size
                     else:
-                        pnl = (t["entry"] - last_price) * t["size"] / self.pip_point
+                        pnl = (t["entry"] - last_price) * t["size"] / pip_size
                     t.update({"exit": last_price, "exit_time": last_time, "pnl": pnl})
                     trades.append(t)
                     equity += pnl

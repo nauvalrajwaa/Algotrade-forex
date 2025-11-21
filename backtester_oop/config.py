@@ -96,7 +96,29 @@ SEARCH_SPACE_BY_STRATEGY = {
         
         # --- Killzone Usage ---
         "use_killzones": (0, 1),               # 0=False, 1=True → aktifkan/disable sesi trading
-    }
+    },
+
+    "m1_scalper": {
+        # ===== Moving Average (super cepat) =====
+        # MA sangat pendek untuk sinyal high-frequency
+        "ma_fast": (2, 10),     # default 3
+        "ma_slow": (5, 20),     # default 8
+
+        # ===== ATR (volatilitas sangat cepat) =====
+        # ATR period kecil, threshold sangat rendah agar entry sering
+        "atr_period": (3, 15),  # default 5
+        "atr_mult": (0.1, 1.0), # default 0.3 → entry sering
+
+        # ===== Momentum Filter =====
+        # Momentum candle pendek (scalping identik dengan micro-momentum)
+        "mom_period": (1, 5),    # default 2
+        "mom_threshold": (0.0, 1.0),  
+        # threshold 0–1 pip (entry gesit)
+
+        # ===== Anti-Spam Entry (cooldown) =====
+        # Scalping harus cepat tapi tidak boleh spam tiap candle
+        "cooldown": (0, 5)     # default 1
+    },
 }
 
 
@@ -162,18 +184,28 @@ MC_CONFIG = {
 # ============================================================
 
 SLTP_RATIO = "1:2"   # 1 unit = 30 pips
-BASE_PIPS = 30
+BASE_PIPS = 20
 
-# Fixed lot (set None untuk dynamic risk)
-FIXED_LOT = 0.5
+FIXED_LOT_BACKTEST = 0.5
+
+FIXED_LOT_LIVE = 0.5
+
+FIXED_LOT_XAUUSD = 0.5
+FIXED_LOT_EURUSD = 0.8 
+FIXED_LOT_GBPUSD = 0.8
+FIXED_LOT_GBPJPY = 0.9
+
 MAX_LOT_CAP = 100.0
 MIN_LOT_FALLBACK = 0.01
 
-MAX_OPEN_TRADES = 1
+MAX_OPEN_TRADES = 2
 
 
 # ============================================================
 # Logging / Trade Recording
 # ============================================================
-LOG_FILE = "logs/live_default.log"
-TRADE_CSV = "logs/trades.csv"
+LOG_FILE = "logs/live/live_default.log"
+LOG_FILE_SCREENING = "logs/screening/screening.log"
+TRADE_CSV = "logs/live/trades.csv"
+TRADE_CSV_SCREENING = "logs/screening/trades_screening.csv"
+

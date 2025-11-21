@@ -18,7 +18,7 @@ from config import (
     MAX_OPEN_TRADES,
     SLTP_RATIO,
     BASE_PIPS,
-    FIXED_LOT,
+    FIXED_LOT_BACKTEST,
 )
 
 from backtester.data.fetcher import DataFetcher
@@ -26,6 +26,7 @@ from backtester.strategies.ma_atr import MA_ATR_Strategy
 from backtester.strategies.rsi_ma_reversal import RSI_MA_Reversal
 from backtester.strategies.ict_hybrid import ICTHybridStrategy
 from backtester.strategies.ict_time import ICTAdvancedStrategy
+from backtester.strategies.m1_scalper import M1ScalperStrategy
 
 from backtester.engine.backtest_engine import BacktestEngine
 from backtester.optimizer.metrics import metrics_from_trades, ascii_box_table
@@ -41,6 +42,7 @@ STRATEGY_CLASSES = {
     "rsi_ma": RSI_MA_Reversal,
     "ict_hybrid": ICTHybridStrategy,
     "ict_time": ICTAdvancedStrategy,
+    "m1_scalper": M1ScalperStrategy,
 }
 
 
@@ -129,16 +131,56 @@ def main():
     parser.add_argument("--bars", type=int, default=BARS)
     parser.add_argument("--initial-balance", type=float, default=INITIAL_BALANCE)
     parser.add_argument("--strategy", choices=list(STRATEGY_CLASSES.keys()), default="ma_atr")
+
+    # ========= NEW ARGUMENT: TIMEFRAME =========
+    parser.add_argument(
+        "--tf",
+        type=str,
+        default="M15",
+        help="MT5 timeframe: M1 M5 M15 M30 H1"
+    )
+    # ===========================================
+
     args = parser.parse_args()
 
     fetcher = DataFetcher(mt5_path=MT5_PATH)
+
+    # ========= TIMEFRAME MAP =========
+    TF_MAP = {
+        "M1": 1,
+        "M5": 5,
+        "M15": 15,
+        "M30": 30,
+        "H1": 60,
+    }
+    # ==================================
 
     # ---------------- Load Data ----------------
     if args.source == "mt5":
         import MetaTrader5 as mt5
         mt5.initialize()
-        timeframe = mt5.TIMEFRAME_M15
+
+        # map ke MT5 constant
+        tf_code = args.tf.upper()
+        if tf_code not in TF_MAP:
+            raise ValueError(f"Invalid timeframe {args.tf}. Use M1 M5 M15 M30 H1.")
+
+        # Mapping MT5 constants
+        if tf_code == "M1":
+            timeframe = mt5.TIMEFRAME_M1
+        elif tf_code == "M5":
+            timeframe = mt5.TIMEFRAME_M5
+        elif tf_code == "M15":
+            timeframe = mt5.TIMEFRAME_M15
+        elif tf_code == "M30":
+            timeframe = mt5.TIMEFRAME_M30
+        elif tf_code == "H1":
+            timeframe = mt5.TIMEFRAME_H1
+
+        print(f"[MT5] Fetching {args.symbol} timeframe={args.tf} bars={args.bars}")
+
         df = fetcher.fetch_mt5(args.symbol, timeframe, bars=args.bars)
+
     else:
         if args.csv is None:
             raise ValueError("CSV file missing")
@@ -155,6 +197,7 @@ def main():
     print("\n=== Backtest Configuration ===")
     print(f" Strategy           : {strategy_name}")
     print(f" Initial Balance    : {args.initial_balance}")
+    print(f" Timeframe          : {args.tf}")
     print(f" Search Space       : {strategy_space}")
     print(f" Optimizer          : {OPTIMIZER}")
     print(f" Max Open Trades    : {MAX_OPEN_TRADES}\n")
