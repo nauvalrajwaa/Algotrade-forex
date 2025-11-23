@@ -1,4 +1,3 @@
-````markdown
 ## 📁 Datasets
 
 ### 1. Source
@@ -60,6 +59,3 @@ print("Saved:", len(df), "rows")
 ### 5. Notes
 
 * If MT5 limits the number of bars (`limited by chart settings`), increase **Max bars in chart** and **Max bars in history** via MT5 → Tools → Options → Charts.
-
-```
-```

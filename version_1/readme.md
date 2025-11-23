@@ -1,4 +1,3 @@
-```markdown
 # **Algorithmic Trading Backtesting & Genetic Optimization Framework**
 
 This framework is a modular **algorithmic trading system** built in Python, featuring:
@@ -243,6 +242,3 @@ MIT License.
 Developed by **Nauval Rajwaa Raysendria**.
 
 If you need a PDF manual or video tutorials, feel free to ask!
-
-```
-```
