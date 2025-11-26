@@ -20,7 +20,7 @@ INITIAL_BALANCE = 10000.0
 MAX_TRADES = 1
 
 # none / ga / mc / ga_mc
-OPTIMIZER = "ga"
+OPTIMIZER = "none"
 
 # ------------------------------------------------------------
 # DEFAULT SEARCH SPACE (fallback jika strategi tidak punya)
@@ -29,7 +29,6 @@ SEARCH_SPACE_DEFAULT = {
     "ma_fast": (5, 20),
     "ma_slow": (21, 100),
     "atr_mul": (1.0, 3.0),
-    "risk_per_trade": (0.005, 0.03),
 }
 
 # ------------------------------------------------------------
@@ -54,71 +53,29 @@ SEARCH_SPACE_BY_STRATEGY = {
         # Cooldown antar sinyal supaya tidak flip-flop
         "cooldown": (1, 15)
     },
-
-    "rsi_ma": {
-        # --- Moving Average Trend Filter ---
-        "ma_fast": (5, 30),
-        "ma_slow": (20, 200),
-
-        # --- RSI Reversal ---
-        "rsi_period": (5, 30),
-        "rsi_overbought": (60, 90),
-        "rsi_oversold": (10, 40),
-
-        # --- ATR Volatility Filter ---
-        "atr_period": (5, 30),
-        "atr_mult": (0.5, 1.5),   # 0.8 default → paling stabil
-
-        # --- Anti-Whipsaw ---
-        "cooldown": (1, 20),
-    },
     
-    "ict_hybrid": {
-    # --- Liquidity Sweep Sensitivity ---
-        "swing_lookback": (3, 15), # Swing lookback kecil = lebih agresif deteksi sweep
+    "swing_engulf_base": {
+        # Swing length (jumlah bar kiri-kanan untuk pivot)
+        "length": (5, 10),
 
-    # --- Displacement / Momentum Filter ---
-        "body_pct": (0.40, 0.80), # Semakin tinggi → hanya ambil candle dengan body besar
+       # Tolerance jarak swing-index → rentang valid engulfing
+        "tolerance": (10, 30)
+    }, 
 
-    # --- Optional Time Filter ---
-        "time_filter": (0, 1),  # True → hanya ambil sinyal pada menit tertentu (ICT killzone style), False → sinyal aktif sepanjang hari
+    "swing_engulf": {
+        # Swing length (jumlah bar kiri-kanan untuk pivot)
+        "length": (5, 10),
 
-    # --- Optional Time Window Evolution ---
-        "time_window_choice": (1, 5),  # jumlah item dari daftar minute preset, GA memilih "berapa banyak" menit entry yang efektif (opsional), ex: 10,15,30,45,50 → default
+       # Tolerance jarak swing-index → rentang valid engulfing
+        "tolerance": (10, 30)
     },
 
-    "ict_time": {
-        # --- FVG Shift ---
-        "fvg_shift": (2, 5),                   # candle lag untuk Fair Value Gap, default stabil 3
-        
-        # --- Equal High/Low Threshold ---
-        "equal_threshold_pct": (0.0001, 0.001), # % harga untuk deteksi level EQH/EQL, default 0.0003
-        
-        # --- Killzone Usage ---
-        "use_killzones": (0, 1),               # 0=False, 1=True → aktifkan/disable sesi trading
-    },
-
-    "m1_scalper": {
-        # ===== Moving Average (super cepat) =====
-        # MA sangat pendek untuk sinyal high-frequency
-        "ma_fast": (2, 10),     # default 3
-        "ma_slow": (5, 20),     # default 8
-
-        # ===== ATR (volatilitas sangat cepat) =====
-        # ATR period kecil, threshold sangat rendah agar entry sering
-        "atr_period": (3, 15),  # default 5
-        "atr_mult": (0.1, 1.0), # default 0.3 → entry sering
-
-        # ===== Momentum Filter =====
-        # Momentum candle pendek (scalping identik dengan micro-momentum)
-        "mom_period": (1, 5),    # default 2
-        "mom_threshold": (0.0, 1.0),  
-        # threshold 0–1 pip (entry gesit)
-
-        # ===== Anti-Spam Entry (cooldown) =====
-        # Scalping harus cepat tapi tidak boleh spam tiap candle
-        "cooldown": (0, 5)     # default 1
-    },
+    "swing_engulf_ema": {
+        # Sama seperti DEFAULT_PARAMETERS
+        "length": (2, 15),          # Swing Length
+        "tolerance": (5, 60),       # Bar tolerance
+        "ema_period": (10, 50)      # EMA filter
+    }
 }
 
 
@@ -143,29 +100,29 @@ GA_CONFIG_BY_STRATEGY = {
         "elitism": 2,
     },
 
-    "rsi_ma": {
-        "population_size": 30,
-        "generations": 8,
-        "mutation_rate": 0.15,
-        "crossover_rate": 0.6,
-        "elitism": 3,
-    },
-
-    "ict_hybrid": {
-        "population_size": 40,
-        "generations": 7,
-        "mutation_rate": 0.20,
-        "crossover_rate": 0.5,
-        "elitism": 4,
-    },
-
-    "ict_time": {
+    "swing_engulf": {
         "population_size": 35,
-        "generations": 6,
+        "generations": 3,
         "mutation_rate": 0.18,
         "crossover_rate": 0.55,
         "elitism": 4,
-    }
+    },
+    
+    "swing_engulf": {
+        "population_size": 35,
+        "generations": 3,
+        "mutation_rate": 0.18,
+        "crossover_rate": 0.55,
+        "elitism": 4,
+    },
+    
+    "swing_engulf_base": {
+        "population_size": 35,
+        "generations": 3,
+        "mutation_rate": 0.18,
+        "crossover_rate": 0.55,
+        "elitism": 4,
+    },
 }
 
 
@@ -183,8 +140,8 @@ MC_CONFIG = {
 # LIVE-BACKTEST ENGINE CONFIG
 # ============================================================
 
-SLTP_RATIO = "1:2"   # 1 unit = 30 pips
-BASE_PIPS = 20
+SLTP_RATIO = "1:1"
+BASE_PIPS = 60
 
 FIXED_LOT_BACKTEST = 0.5
 

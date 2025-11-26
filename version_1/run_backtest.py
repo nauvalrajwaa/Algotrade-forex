@@ -21,17 +21,16 @@ from config import (
     FIXED_LOT_BACKTEST,
 )
 
-from backtester.data.fetcher import DataFetcher
-from backtester.strategies.ma_atr import MA_ATR_Strategy
-from backtester.strategies.rsi_ma_reversal import RSI_MA_Reversal
-from backtester.strategies.ict_hybrid import ICTHybridStrategy
-from backtester.strategies.ict_time import ICTAdvancedStrategy
-from backtester.strategies.m1_scalper import M1ScalperStrategy
+from main.data.fetcher import DataFetcher
+from main.strategies.ma_atr import MA_ATR_Strategy
+from main.strategies.swing_engulf import Swing_Engulf_Strategy
+from main.strategies.swing_engulf_ema import Swing_Engulf_EMA_Strategy
+from main.strategies.swing_engulf_base import Swing_Engulf_Strategy_Base
 
-from backtester.engine.backtest_engine import BacktestEngine
-from backtester.optimizer.metrics import metrics_from_trades, ascii_box_table
-from backtester.optimizer.ga import GeneticOptimizer
-from backtester.optimizer.montecarlo import MonteCarloOptimizer
+from main.engine.backtest_engine import BacktestEngine
+from main.optimizer.metrics import metrics_from_trades, ascii_box_table
+from main.optimizer.ga import GeneticOptimizer
+from main.optimizer.montecarlo import MonteCarloOptimizer
 
 
 # ======================================================
@@ -39,10 +38,9 @@ from backtester.optimizer.montecarlo import MonteCarloOptimizer
 # ======================================================
 STRATEGY_CLASSES = {
     "ma_atr": MA_ATR_Strategy,
-    "rsi_ma": RSI_MA_Reversal,
-    "ict_hybrid": ICTHybridStrategy,
-    "ict_time": ICTAdvancedStrategy,
-    "m1_scalper": M1ScalperStrategy,
+    "swing_engulf": Swing_Engulf_Strategy,
+    "swing_engulf_ema": Swing_Engulf_EMA_Strategy,
+    "swing_engulf_base": Swing_Engulf_Strategy_Base,
 }
 
 
@@ -58,10 +56,14 @@ def build_strategy(name, params):
 # ======================================================
 # Fitness Function (NOW SAFE)
 # ======================================================
-def evaluate_params(params, df, initial_balance, strategy_name):
+def evaluate_params(params, df, initial_balance, strategy_name, symbol):
     try:
         strat = build_strategy(strategy_name, params)
-        engine = BacktestEngine(strategy=strat, initial_balance=initial_balance)
+        engine = BacktestEngine(
+            strategy=strat,
+            initial_balance=initial_balance,
+            symbol=symbol # NEW
+            )
 
         eq, trades = engine.run(df)
         metrics = metrics_from_trades(trades, eq, initial_balance)
@@ -87,17 +89,26 @@ def evaluate_params(params, df, initial_balance, strategy_name):
 # ======================================================
 # Run Backtest + Plot
 # ======================================================
-def run_backtest_and_plot(params, df, initial_balance, strategy_name):
+def run_backtest_and_plot(params, df, initial_balance, strategy_name, symbol, default_params_override=None):
     print("\n\n=== Running Backtest ===")
     print(f"Config:")
     print(f"  Max Open Trades : {MAX_OPEN_TRADES}")
     print(f"  SL/TP Ratio     : {SLTP_RATIO}")
     print(f"  SL Base Pips    : {BASE_PIPS}")
-    print(f"  Fixed Lot       : {FIXED_LOT}")
-    print(f"  Strategy Params : {params}\n")
+    print(f"  Fixed Lot       : {FIXED_LOT_BACKTEST}")
+        
+    if default_params_override is not None:
+        print(f"  Strategy Params : {default_params_override}\n")
+    else:
+        print(f"  Strategy Params : {params}\n")
 
     strat = build_strategy(strategy_name, params)
-    engine = BacktestEngine(strategy=strat, initial_balance=initial_balance)
+    
+    engine = BacktestEngine(
+        strategy=strat,
+        initial_balance=initial_balance,
+        symbol=symbol   # NEW
+    )
 
     eq, trades = engine.run(df)
     eq = pd.Series(eq)
@@ -206,8 +217,17 @@ def main():
     # MODE 1: NO OPTIMIZER
     # ======================================================
     if OPTIMIZER == "none":
-        params = {k: (v[0] + v[1]) / 2 for k, v in strategy_space.items()}
-        run_backtest_and_plot(params, df, args.initial_balance, strategy_name)
+        print("\nOptimizer = none → using strategy DEFAULT parameters")
+
+        # Build strategy with default params
+        strat_temp = build_strategy(strategy_name, params=None)
+
+        # Extract universal default parameters
+        default_params = strat_temp.DEFAULT_PARAMETERS.copy()
+
+        print(f"Default Strategy Params = {default_params}")
+
+        run_backtest_and_plot(default_params, df, args.initial_balance, strategy_name, args.symbol, default_params_override=default_params)
         return
 
     # ======================================================
@@ -218,7 +238,7 @@ def main():
             search_space=strategy_space,
             config=ga_config,
             fitness_function=lambda p: evaluate_params(
-                p, df, args.initial_balance, strategy_name
+                p, df, args.initial_balance, strategy_name, args.symbol
             ),
             strategy_name=strategy_name
         )
@@ -226,7 +246,8 @@ def main():
         print("\n=== GA Best Result ===")
         print(best_params, best_score)
 
-        run_backtest_and_plot(best_params, df, args.initial_balance, strategy_name)
+        run_backtest_and_plot(best_params, df, args.initial_balance, strategy_name, args.symbol)
+
         return
 
     # ======================================================
@@ -237,13 +258,14 @@ def main():
             search_space=strategy_space,
             config=MC_CONFIG,
             fitness_function=lambda p: evaluate_params(
-                p, df, args.initial_balance, strategy_name
+                p, df, args.initial_balance, strategy_name, args.symbol
             ),
         )
         best_params, best_score = mc.run()
         print("\n=== MC Best Result ===", best_params, best_score)
 
-        run_backtest_and_plot(best_params, df, args.initial_balance, strategy_name)
+        run_backtest_and_plot(best_params, df, args.initial_balance, strategy_name, args.symbol)
+
         return
 
     # ======================================================
@@ -256,20 +278,20 @@ def main():
             search_space=strategy_space,
             config=ga_config,
             fitness_function=lambda p: evaluate_params(
-                p, df, args.initial_balance, strategy_name
+                p, df, args.initial_balance, strategy_name, args.symbol
             ),
             strategy_name=strategy_name
         )
         best_ga_params, _ = ga.run()
 
-        run_backtest_and_plot(best_ga_params, df, args.initial_balance, strategy_name)
+        run_backtest_and_plot(best_ga_params, df, args.initial_balance, strategy_name, args.symbol)
 
         print("\n========== Running MC Phase ==========")
         mc = MonteCarloOptimizer(
             search_space=strategy_space,
             config=MC_CONFIG,
             fitness_function=lambda p: evaluate_params(
-                p, df, args.initial_balance, strategy_name
+                p, df, args.initial_balance, strategy_name, args.symbol
             )
         )
 

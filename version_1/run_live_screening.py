@@ -1,10 +1,10 @@
 # run_live_screening.py
 import argparse
-from backtester.engine.live_engine_screening import LiveEngineScreening
+from main.engine.live_engine_screening import LiveEngineScreening
 
-from backtester.strategies.ma_atr import MA_ATR_Strategy
-from backtester.strategies.rsi_ma_reversal import RSI_MA_Reversal
-from backtester.strategies.m1_scalper import M1ScalperStrategy
+from main.strategies.ma_atr import MA_ATR_Strategy
+from main.strategies.rsi_ma_reversal import RSI_MA_Reversal
+from main.strategies.m1_scalper import M1ScalperStrategy
 import config
 
 
