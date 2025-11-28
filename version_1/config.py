@@ -1,4 +1,9 @@
 # backtester_oop/config.py
+import os
+from dotenv import load_dotenv
+
+# Load file .env
+load_dotenv()
 
 """
 Global configuration for Backtester + LiveEngine Framework.
@@ -171,8 +176,14 @@ TRADE_CSV_SCREENING = "logs/screening/trades_screening.csv"
 # ============================================================
 # GOOGLE SHEETS CONFIG
 # ============================================================
-
+USE_GSHEET = True
+# Ambil nama file dari env, defaultnya 'credentials.json'
+GSHEET_CREDENTIAL_FILE = os.getenv("GSHEET_CREDENTIAL_FILE", "credentials.json")
+GSHEET_ID = os.getenv("GSHEET_ID")
 
 # ============================================================
 # TELEGRAM CONFIG
 # ============================================================
+# Jika tidak ada di .env, return string kosong atau error
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") 
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Chat ID biasanya tidak terlalu rahasia, tapi boleh dimasukkan ke env juga
