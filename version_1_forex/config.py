@@ -1,4 +1,9 @@
 # backtester_oop/config.py
+import os
+from dotenv import load_dotenv
+
+# Load file .env
+load_dotenv()
 
 """
 Global configuration for Backtester + LiveEngine Framework.
@@ -167,7 +172,6 @@ LOG_FILE_SCREENING = "logs/screening/screening.log"
 TRADE_CSV = "logs/live/trades.csv"
 TRADE_CSV_SCREENING = "logs/screening/trades_screening.csv"
 
-
 # ============================================================
 # GOOGLE SHEETS CONFIG
 # ============================================================
@@ -182,9 +186,3 @@ GSHEET_ID = os.getenv("GSHEET_ID")
 # Jika tidak ada di .env, return string kosong atau error
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") 
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Chat ID biasanya tidak terlalu rahasia, tapi boleh dimasukkan ke env juga
-
-# ============================================================
-# BINANCE CONFIG
-# ============================================================
-API_KEY_BINANCE= os.getenv("API_KEY_BINANCE") 
-SECRET_KEY_BINANCE= os.getenv("SECRET_KEY_BINANCE")

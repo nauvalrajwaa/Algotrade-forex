@@ -1,7 +1,7 @@
 # run_live_screening_crypto.py
 
 import argparse
-from engine.live_engine_screening_crypto import LiveEngineScreeningCrypto
+from main.engine.live_engine_screening_crypto import LiveEngineScreeningCrypto
 
 # Import strategi (gunakan strategi yang sama dengan Forex)
 from main.strategies.ma_atr import MA_ATR_Strategy
