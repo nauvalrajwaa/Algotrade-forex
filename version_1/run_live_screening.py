@@ -1,10 +1,9 @@
 # run_live_screening.py
 import argparse
-from main.engine.live_engine_screening import LiveEngineScreening
+from main.engine.live_engine_screening_online import LiveEngineScreening
 
 from main.strategies.ma_atr import MA_ATR_Strategy
-from main.strategies.rsi_ma_reversal import RSI_MA_Reversal
-from main.strategies.m1_scalper import M1ScalperStrategy
+from main.strategies.swing_engulf_base import Swing_Engulf_Strategy_Base
 import config
 
 
@@ -12,7 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run live trading engine (MT5) with multi-symbol screening")
 
     parser.add_argument("--strategy", required=True,
-                        choices=["ma_atr", "rsi", "m1_scalper"],
+                        choices=["ma_atr", "swing_engulf_base"],
                         help="Strategy to use")
 
     parser.add_argument("--symbols", required=True,
@@ -41,24 +40,9 @@ def main():
             "atr_mult": 1.5,
             "cooldown": 3
         }),
-        "rsi": (RSI_MA_Reversal, {
-            "ma_fast": 10,
-            "ma_slow": 50,
-            "rsi_period": 14,
-            "rsi_oversold": 30,
-            "rsi_overbought": 70,
-            "atr_period": 14,
-            "atr_mult": 0.8,
-            "cooldown": 5
-        }),
-        "m1_scalper": (M1ScalperStrategy, {
-            "ma_fast": 3,
-            "ma_slow": 8,
-            "atr_period": 5,
-            "atr_mult": 0.3,
-            "mom_period": 2,
-            "mom_threshold": 0.0,
-            "cooldown": 1
+        "swing_engulf_base": (Swing_Engulf_Strategy_Base, {
+            "length": 5,
+            "tolerance": 40,
         }),
     }
 
