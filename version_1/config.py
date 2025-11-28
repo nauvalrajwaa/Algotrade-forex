@@ -171,13 +171,8 @@ TRADE_CSV_SCREENING = "logs/screening/trades_screening.csv"
 # ============================================================
 # GOOGLE SHEETS CONFIG
 # ============================================================
-USE_GSHEET = True  # Set True jika ingin pakai GSheet
-GSHEET_CREDENTIAL_FILE = r"C:\Users\hp8cg\Downloads\nvl\brong-system-9f5f890940b7.json"
-GSHEET_ID = "1qW4US2W1YYVWix1tvfq4vR83jMaHy43WbW-U99h5rqY"  # Masukkan ID Spreadsheet Anda disini
+
 
 # ============================================================
 # TELEGRAM CONFIG
 # ============================================================
-USE_TELEGRAM = True
-TELEGRAM_BOT_TOKEN = "7738566774:AAEHCnfIIyW6QNBNPLbrxyo-ULmH2-R_7Sk"
-TELEGRAM_CHAT_ID = "1324083138"

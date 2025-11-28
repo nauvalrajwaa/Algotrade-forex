@@ -1,3 +1,16 @@
-backtester_oop/backtester/data/*.csv
-backtester_oop/backtester/data/data_clean/*.csv
+# Abaikan file environment
+.env
 
+# Abaikan file kredensial Google
+credentials.json
+client_secret.json
+
+# Abaikan folder cache python
+__pycache__/
+*.pyc
+
+# Abaikan folder virtual environment (jika pakai)
+venv/
+env/
+
+*.csv
