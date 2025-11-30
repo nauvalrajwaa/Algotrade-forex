@@ -2,8 +2,7 @@
 .env
 
 # Abaikan file kredensial Google
-credentials.json
-client_secret.json
+*.json
 
 # Abaikan folder cache python
 __pycache__/
@@ -14,3 +13,5 @@ venv/
 env/
 
 *.csv
+
+*.log
