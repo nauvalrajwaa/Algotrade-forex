@@ -1,86 +1,113 @@
 # backtester_oop/config.py
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables (.env file)
+load_dotenv()
+
 """
-Global configuration for Backtester + LiveEngine Framework.
+Global configuration for Crypto Engine (Binance Futures).
 """
 
 # ============================================================
-# MetaTrader 5 Settings
+# BINANCE CONNECTIVITY
 # ============================================================
-MT5_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
-SYMBOLS = ["XAUUSD"]
-TIMEFRAME = None
-BARS = 5000
+API_KEY_BINANCE = os.getenv("API_KEY_BINANCE", "")
+SECRET_KEY_BINANCE = os.getenv("SECRET_KEY_BINANCE", "")
 
 
 # ============================================================
-# Backtest Defaults
+# CRYPTO TRADING LOGIC (POSITION SIZING & RISK)
 # ============================================================
-INITIAL_BALANCE = 10000.0
-MAX_TRADES = 1
 
-# none / ga / mc / ga_mc
+# 1. ENTRY SIZING
+# Persentase dari Total Balance yang digunakan sebagai MARGIN per trade.
+# Contoh: 0.05 = 5%. Jika Saldo $1000, margin trade = $50.
+ENTRY_EQUITY_PERCENT = 0.05 
+
+# 2. LEVERAGE
+# Target leverage yang akan diset ke Binance Futures.
+TARGET_LEVERAGE = 10
+
+# 3. STOP LOSS SETTINGS (PERCENTAGE BASED)
+# Jarak SL dalam persentase harga.
+# 0.02 = SL ditaruh sejauh 2% dari harga entry.
+SL_PERCENTAGE = 0.02
+
+# 4. TAKE PROFIT RATIO
+# Format "SL:TP". "1:2" berarti TP jaraknya 2x lipat dari jarak SL.
+SLTP_RATIO = "1:2"
+
+# 5. TRAILING STOP (PERCENTAGE BASED)
+# Menggeser SL jika harga bergerak profit sebesar sekian persen.
+# 0.01 = 1%. Set 0 untuk menonaktifkan.
+TRAILING_STOP_PERCENT = 0.01
+
+# 6. SAFETY
+MAX_OPEN_TRADES = 3  # Maksimal posisi terbuka bersamaan
+
+# 7. BEP
+# Berapa persen perjalanan ke TP untuk menggeser SL ke BEP?
+# 0.5 = 50%. Jika TP 100 poin, maka saat profit 50 poin, SL geser ke Entry.
+BEP_TRIGGER_PCT = 0.5
+
+# 8. REFRESH HOURS
+# Waktu refresh scanner otomatis (dalam jam)
+REFRESH_HOURS = 4
+
+
+# ============================================================
+# BACKTEST DEFAULTS (Simulation)
+# ============================================================
+INITIAL_BALANCE = 1000.0  # Default saldo simulasi paper trading
+MAX_TRADES = 1            # Limit trade simultaneous untuk backtester sederhana
+
+# Optimizer Mode: none / ga / mc
 OPTIMIZER = "none"
 
-# ------------------------------------------------------------
-# DEFAULT SEARCH SPACE (fallback jika strategi tidak punya)
-# ------------------------------------------------------------
+
+# ============================================================
+# STRATEGY SEARCH SPACES (Untuk Optimization / Backtest)
+# ============================================================
+
+# Default fallback
 SEARCH_SPACE_DEFAULT = {
     "ma_fast": (5, 20),
     "ma_slow": (21, 100),
-    "atr_mul": (1.0, 3.0),
+    "atr_mult": (1.0, 3.0),
 }
 
-# ------------------------------------------------------------
-# SEARCH SPACE PER STRATEGI
-# (Akan dipanggil di run_backtest.py sesuai strategy_name)
-# ------------------------------------------------------------
+# Per Strategy Parameters
 SEARCH_SPACE_BY_STRATEGY = {
     "ma_atr": {
-        # --- Moving Average Crossover ---
-        # Fast MA untuk deteksi perubahan tren cepat
         "ma_fast": (5, 30),
-        # Slow MA untuk tren mayor / filter noise
         "ma_slow": (20, 200),
-
-        # --- ATR Volatility Filter ---
-        # ATR untuk mengukur volatilitas dinamis
         "atr_period": (5, 30),
-        # Threshold volatilitas → entry hanya ketika ATR cukup besar
         "atr_mult": (0.5, 3.0),
-
-        # --- Anti-Flip / Anti-Whipsaw ---
-        # Cooldown antar sinyal supaya tidak flip-flop
         "cooldown": (1, 15)
     },
     
     "swing_engulf_base": {
-        # Swing length (jumlah bar kiri-kanan untuk pivot)
-        "length": (5, 10),
-
-       # Tolerance jarak swing-index → rentang valid engulfing
-        "tolerance": (10, 30)
+        "length": (3, 10),      # Swing length
+        "tolerance": (10, 50)   # Tolerance dalam satuan tick/poin relatif
     }, 
 
     "swing_engulf": {
-        # Swing length (jumlah bar kiri-kanan untuk pivot)
-        "length": (5, 10),
-
-       # Tolerance jarak swing-index → rentang valid engulfing
-        "tolerance": (10, 30)
+        "length": (3, 10),
+        "tolerance": (10, 50)
     },
 
     "swing_engulf_ema": {
-        # Sama seperti DEFAULT_PARAMETERS
-        "length": (2, 15),          # Swing Length
-        "tolerance": (5, 60),       # Bar tolerance
-        "ema_period": (10, 50)      # EMA filter
+        "length": (2, 15),
+        "tolerance": (5, 60),
+        "ema_period": (10, 50)
     }
 }
 
 
 # ============================================================
-# Optimization – Genetic Algorithm
+# GENETIC ALGORITHM (GA) CONFIG
 # ============================================================
 GA_CONFIG_DEFAULT = {
     "population_size": 20,
@@ -90,7 +117,6 @@ GA_CONFIG_DEFAULT = {
     "elitism": 2,
 }
 
-# GA CONFIG PER STRATEGI
 GA_CONFIG_BY_STRATEGY = {
     "ma_atr": {
         "population_size": 25,
@@ -99,23 +125,6 @@ GA_CONFIG_BY_STRATEGY = {
         "crossover_rate": 0.7,
         "elitism": 2,
     },
-
-    "swing_engulf": {
-        "population_size": 35,
-        "generations": 3,
-        "mutation_rate": 0.18,
-        "crossover_rate": 0.55,
-        "elitism": 4,
-    },
-    
-    "swing_engulf": {
-        "population_size": 35,
-        "generations": 3,
-        "mutation_rate": 0.18,
-        "crossover_rate": 0.55,
-        "elitism": 4,
-    },
-    
     "swing_engulf_base": {
         "population_size": 35,
         "generations": 3,
@@ -127,7 +136,7 @@ GA_CONFIG_BY_STRATEGY = {
 
 
 # ============================================================
-# Optimization – Monte Carlo / Simulated Annealing
+# MONTE CARLO CONFIG
 # ============================================================
 MC_CONFIG = {
     "iterations": 100,
@@ -137,54 +146,24 @@ MC_CONFIG = {
 
 
 # ============================================================
-# LIVE-BACKTEST ENGINE CONFIG
+# INTEGRATIONS (TELEGRAM & GOOGLE SHEETS)
 # ============================================================
 
-SLTP_RATIO = "1:1"
-BASE_PIPS = 60
-TRAILING_STOP_PIP = 10
+# --- TELEGRAM ---
+USE_TELEGRAM = True
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
-FIXED_LOT_BACKTEST = 0.5
-
-FIXED_LOT_LIVE = 0.5
-
-FIXED_LOT_XAUUSD = 0.5
-FIXED_LOT_EURUSD = 0.8 
-FIXED_LOT_GBPUSD = 0.8
-FIXED_LOT_GBPJPY = 0.9
-
-MAX_LOT_CAP = 100.0
-MIN_LOT_FALLBACK = 0.01
-
-MAX_OPEN_TRADES = 2
-
-
-# ============================================================
-# Logging / Trade Recording
-# ============================================================
-LOG_FILE = "logs/live/live_default.log"
-LOG_FILE_SCREENING = "logs/screening/screening.log"
-TRADE_CSV = "logs/live/trades.csv"
-TRADE_CSV_SCREENING = "logs/screening/trades_screening.csv"
-
-
-# ============================================================
-# GOOGLE SHEETS CONFIG
-# ============================================================
+# --- GOOGLE SHEETS ---
 USE_GSHEET = True
-# Ambil nama file dari env, defaultnya 'credentials.json'
 GSHEET_CREDENTIAL_FILE = os.getenv("GSHEET_CREDENTIAL_FILE", "credentials.json")
-GSHEET_ID = os.getenv("GSHEET_ID")
+GSHEET_ID = os.getenv("GSHEET_ID", "")
+
 
 # ============================================================
-# TELEGRAM CONFIG
+# LOGGING PATHS
 # ============================================================
-# Jika tidak ada di .env, return string kosong atau error
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") 
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Chat ID biasanya tidak terlalu rahasia, tapi boleh dimasukkan ke env juga
-
-# ============================================================
-# BINANCE CONFIG
-# ============================================================
-API_KEY_BINANCE= os.getenv("API_KEY_BINANCE") 
-SECRET_KEY_BINANCE= os.getenv("SECRET_KEY_BINANCE")
+LOG_FILE = "logs/live/live_crypto.log"
+LOG_FILE_SCREENING = "logs/screening/screening_crypto.log"
+TRADE_CSV = "logs/live/trades_crypto.csv"
+TRADE_CSV_SCREENING = "logs/screening/trades_screening_crypto.csv"
