@@ -16,7 +16,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import config
 
 # ==============================================================================
-# 1. CLIENT CLASS (RAW API)
+# 1. CLIENT CLASS (RAW API - STABIL & ANTI BLOKIR)
 # ==============================================================================
 class BinanceFuturesClient:
     def __init__(self, api_key, api_secret, base_url="https://testnet.binancefuture.com"):
@@ -81,6 +81,20 @@ class BinanceFuturesClient:
                 return float(balance.get('availableBalance', 0))
         return 0.0
 
+    # --- FITUR BARU: GET ALL POSITIONS (UNTUK EMERGENCY CLOSE) ---
+    def get_all_positions(self) -> List[Dict]:
+        """
+        Mengambil semua posisi terbuka (size != 0) dari akun.
+        Digunakan untuk fitur Emergency Close All.
+        """
+        data = self._request('GET', '/fapi/v2/positionRisk', signed=True)
+        active_positions = []
+        if data:
+            for p in data:
+                if float(p.get('positionAmt', 0)) != 0:
+                    active_positions.append(p)
+        return active_positions
+
     def change_leverage(self, symbol: str, leverage: int) -> Dict:
         params = {'symbol': symbol, 'leverage': leverage}
         return self._request('POST', '/fapi/v1/leverage', params, signed=True)
@@ -89,13 +103,7 @@ class BinanceFuturesClient:
     def create_order(self, symbol: str, side: str, order_type: str, quantity: float, 
                      reduce_only: bool = False, sl_price: float = None, tp_price: float = None) -> Dict:
         """
-        Mengirim order ke Binance.
-        Jika sl_price / tp_price diisi, order akan dikirim sebagai OTO (One-Triggers-Other) 
-        atau Strategi order jika didukung, namun di Raw API futures standar,
-        SL/TP biasanya dikirim sebagai order terpisah (STOP_MARKET / TAKE_PROFIT_MARKET).
-        
-        Disini kita gunakan pendekatan pengiriman BATCH atau Sequential.
-        Untuk kesederhanaan dan stabilitas, kita kirim Entry dulu, lalu kirim SL/TP.
+        Mengirim order ke Binance dengan dukungan SL/TP Exchange-Side (Sequential).
         """
         # 1. Kirim ENTRY Order
         params = {'symbol': symbol, 'side': side, 'type': order_type, 'quantity': quantity}
@@ -108,7 +116,6 @@ class BinanceFuturesClient:
             return entry_res
 
         # 2. Jika Entry Sukses & Ada SL/TP, Kirim Order Proteksi
-        # Kita perlu tahu arah posisi (BUY -> SL/TP nya SELL, dan sebaliknya)
         close_side = 'SELL' if side == 'BUY' else 'BUY'
         
         if sl_price:
@@ -128,7 +135,7 @@ class BinanceFuturesClient:
         return entry_res
 
     def cancel_all_open_orders(self, symbol: str):
-        # Hapus semua SL/TP pending jika posisi diclose manual/terkena salah satu
+        # Hapus semua SL/TP pending
         self._request('DELETE', '/fapi/v1/allOpenOrders', {'symbol': symbol}, signed=True)
 
 
@@ -147,7 +154,9 @@ class LiveEngineScreeningCrypto:
         strategy_params=None
     ):
         self.strategy_class = strategy_class
+        # Bersihkan symbol (BTC/USDT -> BTCUSDT)
         self.symbols = [s.replace("/", "") for s in symbols]
+        self.display_symbols = symbols 
         self.timeframe = timeframe 
         self.bars = bars
         self.mode = mode
@@ -164,7 +173,6 @@ class LiveEngineScreeningCrypto:
         
         # --- CONFIG FEATURE LOGGING ---
         self.ts_pct = getattr(config, "TRAILING_STOP_PERCENT", 0.0)
-        # Ambil config BEP, default 50% (0.5) dari jarak TP
         self.bep_trigger_pct = getattr(config, "BEP_TRIGGER_PCT", 0.5) 
         
         # Setup Logging
@@ -230,22 +238,100 @@ class LiveEngineScreeningCrypto:
             with open(self.trade_csv, "w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(["timestamp", "symbol", "direction", "entry", "sl", "tp", "volume", "status", "retcode", "comment", "sl_ratio", "sl_pct", "timeframe"])
 
+    # =====================================================
+    # CONNECT & INIT
+    # =====================================================
     def connect(self):
         self.logger.info("Connecting to Binance Futures...")
+        # 1. Load Precision & Exchange Info
         info = self.client.get_exchange_info()
+        valid_symbols = []
+        
         if 'symbols' in info:
             for s in info['symbols']:
+                # Hanya proses simbol yang ada di watchlist kita
                 if s['symbol'] in self.symbols:
                     self.symbol_precision[s['symbol']] = {
-                        'qty': s['quantityPrecision'], 'price': s['pricePrecision']
+                        'qty': s['quantityPrecision'], 
+                        'price': s['pricePrecision']
                     }
+                    valid_symbols.append(s['symbol'])
         
-        lev = getattr(config, 'TARGET_LEVERAGE', 5)
+        # Update symbols list (buang simbol yang tidak valid)
+        self.symbols = valid_symbols
+        
+        # 2. Set Leverage (ADAPTIVE MODE)
+        target_lev = getattr(config, 'TARGET_LEVERAGE', 10)
+        
         for sym in self.symbols: 
-            self.client.change_leverage(sym, lev)
-        
+            # Coba set leverage sesuai config
+            res = self.client.change_leverage(sym, target_lev)
+            
+            # Jika gagal (Error -4028 atau response kosong), coba turunkan
+            if not res or 'code' in res: 
+                self.logger.warning(f"Leverage {target_lev}x rejected for {sym}. Retrying with 5x...")
+                res_retry = self.client.change_leverage(sym, 5)
+                
+                if not res_retry or 'code' in res_retry:
+                    self.logger.warning(f"Leverage 5x rejected for {sym}. Setting to 1x...")
+                    self.client.change_leverage(sym, 1)
+
+        # 3. Get Balance
         bal = self.client.get_usdt_balance()
         self.logger.info(f"Connected. Available USDT: {bal}")
+
+    # =====================================================
+    # FITUR BARU: EMERGENCY CLOSE
+    # =====================================================
+    def emergency_close_all(self):
+        """
+        Menutup paksa SEMUA posisi yang terbuka di akun (bukan cuma di watchlist).
+        Digunakan saat shutdown script.
+        """
+        if self.mode == "paper":
+            self.logger.info("[PAPER] Stopping engine. Positions not real.")
+            return
+
+        self.logger.warning("🚨 EMERGENCY STOP TRIGGERED! CLOSING ALL POSITIONS...")
+        self._send_telegram("🚨 <b>EMERGENCY STOP</b>\nClosing ALL positions!")
+
+        try:
+            # 1. Ambil semua posisi aktif
+            positions = self.client.get_all_positions()
+            
+            if not positions:
+                self.logger.info("No open positions found.")
+                return
+
+            # 2. Loop dan Close
+            for pos in positions:
+                symbol = pos['symbol']
+                amt = float(pos['positionAmt'])
+                
+                if amt == 0: continue
+
+                # Tentukan side close (Kebalikan)
+                # Jika amt positif (LONG), close dengan SELL
+                # Jika amt negatif (SHORT), close dengan BUY
+                close_side = 'SELL' if amt > 0 else 'BUY'
+                qty = abs(amt)
+                
+                self.logger.info(f"Closing {symbol} (Qty: {qty})...")
+                
+                # Kirim Order Market Close
+                self.client.create_order(symbol, close_side, 'MARKET', qty, reduce_only=True)
+                
+                # Batalkan semua order SL/TP yang nyangkut
+                self.client.cancel_all_open_orders(symbol)
+                
+                # Sleep dikit biar gak banned spam
+                time.sleep(0.5)
+
+            self.logger.info("✅ All positions closed successfully.")
+            self._send_telegram("✅ All positions closed.")
+
+        except Exception as e:
+            self.logger.error(f"Failed to close positions: {e}")
 
     # =====================================================
     # HELPERS
@@ -330,8 +416,6 @@ class LiveEngineScreeningCrypto:
                     'stopPrice': new_sl, 'closePosition': 'true'
                 }
                 self.client._request('POST', '/fapi/v1/order', params, signed=True)
-                # (Opsional) Pasang TP ulang jika TP juga kecancel
-                # Untuk simple engine, kita biarkan TP manual atau pasang lagi disini
             
             # Update Memory
             self.current_position[symbol]['sl'] = new_sl
@@ -461,16 +545,12 @@ class LiveEngineScreeningCrypto:
 
                     # 2. Manage Position
                     if self.current_position[symbol]:
-                        # Cek apakah posisi masih ada di exchange (opsional, via REST berat)
-                        # Kita gunakan tracking harga lokal dulu
-                        pos = self.current_position[symbol]
-                        
-                        # Jalankan Monitor Logic (BEP & Trailing)
+                        # Monitor Logic (BEP & Trailing)
                         self.monitor_position(symbol, price)
                         
                         # Check Virtual Exit (Trailing Stop Only)
-                        # Hard SL/TP sudah dihandle exchange, tapi kita perlu update status lokal jika kena
-                        # Disini kita asumsikan jika harga lewat SL/TP, posisi sudah closed di exchange
+                        # Hard SL/TP sudah dihandle exchange
+                        pos = self.current_position[symbol]
                         close_reason = None
                         if pos['direction'] == 1:
                             if price <= pos['sl']: close_reason = "SL/Trailing Hit"
@@ -481,7 +561,6 @@ class LiveEngineScreeningCrypto:
                             
                         if close_reason:
                             # Jika trailing stop virtual kena, kita kirim perintah close market
-                            # (Karena SL exchange mungkin masih di bawah)
                             if "Trailing" in close_reason and self.mode != "paper":
                                 side = 'SELL' if pos['direction'] == 1 else 'BUY'
                                 self.client.create_order(symbol, side, 'MARKET', pos['amount'], reduce_only=True)
@@ -492,7 +571,6 @@ class LiveEngineScreeningCrypto:
                             self.current_position[symbol] = None
                         
                         else:
-                            # Tampilkan di tabel log
                             d_str = "BUY" if pos['direction'] == 1 else "SELL"
                             table_rows.append([symbol, price, d_str, pos['sl'], pos['tp']])
                     

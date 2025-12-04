@@ -28,7 +28,7 @@ ENTRY_EQUITY_PERCENT = 0.05
 
 # 2. LEVERAGE
 # Target leverage yang akan diset ke Binance Futures.
-TARGET_LEVERAGE = 10
+TARGET_LEVERAGE = 30
 
 # 3. STOP LOSS SETTINGS (PERCENTAGE BASED)
 # Jarak SL dalam persentase harga.
@@ -56,6 +56,30 @@ BEP_TRIGGER_PCT = 0.5
 # Waktu refresh scanner otomatis (dalam jam)
 REFRESH_HOURS = 4
 
+# ============================================================
+# MARKET SCANNER CONFIGURATION
+# ============================================================
+
+# 1. MINIMUM VOLUME (USDT)
+# Koin dengan volume 24 jam di bawah angka ini akan dibuang.
+# Scalping butuh likuiditas tinggi (min 5-10 Juta). Swing bisa lebih rendah.
+SCANNER_MIN_VOLUME = 5000000.0  # 5 Juta USDT
+
+# 2. SORTING MODE
+# 'activity'   : Fokus Scalping (M1-M5). Cari yang ramai transaksi.
+# 'volatility' : Fokus Swing (H1). Cari yang % naik/turun tinggi.
+# 'hybrid'     : TERBAIK. Kombinasi Ramai + Volatil. Cari koin "Sweet Spot".
+SCANNER_SORT_MODE = 'hybrid'
+
+# 3. BLACKLIST SYMBOLS
+# Daftar koin yang HARAM untuk ditradingkan (misal Stablecoin atau koin bermasalah).
+# Format list string uppercase tanpa slash.
+SCANNER_BLACKLIST = ["USDCUSDT", "TUSDUSDT", "FDUSDUSDT", "USDPUSDT"]
+
+# 4. MINIMUM PRICE CHANGE (%) - Optional
+# Hanya ambil koin yang minimal bergerak sekian persen (agar tidak dapat koin mati).
+# 1.0 berarti minimal naik/turun 1% dalam 24 jam.
+SCANNER_MIN_CHANGE = 1.5
 
 # ============================================================
 # BACKTEST DEFAULTS (Simulation)
@@ -65,7 +89,6 @@ MAX_TRADES = 1            # Limit trade simultaneous untuk backtester sederhana
 
 # Optimizer Mode: none / ga / mc
 OPTIMIZER = "none"
-
 
 # ============================================================
 # STRATEGY SEARCH SPACES (Untuk Optimization / Backtest)
